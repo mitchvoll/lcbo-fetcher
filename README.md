@@ -18,6 +18,9 @@ const COOKIES = {
 };
 ```
 
+### Dependencies
+Web scraping depends on the [Cheerio Library](https://github.com/tani/cheeriogs)
+
 ### Google sheet format
 Script pulls `Proudct Url` column and will populate the rest
 
