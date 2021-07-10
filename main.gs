@@ -1,4 +1,4 @@
-const COLUMNS = { URL: 1, PRODUCT_NAME: 2, AVAILABLE_TO_SHIP: 3, AVAILABLE_IN_STORE: 4 };
+const COLUMNS = { URL: 1, PRODUCT_NAME: 2, AVAILABLE_FOR_DELIVERY: 3, AVAILABLE_IN_STORE: 4, VALID_URL: 5 };
 const AVAILABILITY_MAP = {
   '(Limited QTY)': 'limited',
   '(Unavailable)': 'unavailable',
@@ -15,6 +15,41 @@ const COOKIES = {
   "storetype": "clickcollect",
 };
 
+function main() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const range = sheet.getDataRange();
+  const newlyAvailableProducts = [];
+  
+  for (let i = 2; i < range.getNumRows() + 1; i++) {
+    const product = new ProductAccessor(range, i);
+    const cheerio = new CheerioAccessor(product.url);
+
+    if (!cheerio.isValid()) {
+      if (product.isLinkValid()) {
+        product.markLinkInvalid();
+        sendBrokenLinkDetected(product.name);
+      }
+    
+      continue
+    }
+    
+    if (!product.isAvailableInStore() && cheerio.isAvailableInStore()) {
+      newlyAvailableProducts.push(product);
+    }
+    else if (!product.isAvailableForDelivery() && cheerio.isAvailableForDelivery()) {
+      newlyAvailableProducts.push(product);
+    }
+
+    product.setAttributes({
+      [COLUMNS.PRODUCT_NAME]: cheerio.productName,
+      [COLUMNS.AVAILABLE_IN_STORE]: cheerio.productAvailabilityToStore,
+      [COLUMNS.AVAILABLE_FOR_DELIVERY]: cheerio.productAvailabilityDelivery,
+      [COLUMNS.VALID_URL]: 'true',
+    });
+  };
+
+  sendNowAvailableForProducts(newlyAvailableProducts);
+}
 
 function sendNowAvailableForProducts(products) {
   if (!products.length) return;
@@ -29,37 +64,6 @@ function sendNowAvailableForProducts(products) {
 function sendBrokenLinkDetected(productName) {
   const message = `${productName} link no longer works. Script will skip updating for now but this should be removed or fixed`;
   MailApp.sendEmail(PRIMARY_EMAIL, 'LCBO fetcher bad link', message, { cc: CC_EMAILS});
-}
-
-function main() {
-  const sheet = SpreadsheetApp.getActiveSheet();
-  const range = sheet.getDataRange();
-  const newlyAvailableProducts = [];
-  
-  for (let i = 2; i < range.getNumRows() + 1; i++) {
-    const product = new ProductAccessor(range, i);
-    const cheerio = new CheerioAccessor(product.url);
-
-    if (!cheerio.isValid()) {
-      sendBrokenLinkDetected(product.productName);
-      continue
-    }
-    
-    if (!product.isAvailableInStore() && cheerio.isAvailableInStore()) {
-      newlyAvailableProducts.push(product);
-    }
-    else if (!product.isAvailableForDelivery() && cheerio.isAvailableForDelivery()) {
-      newlyAvailableProducts.push(product);
-    }
-
-    product.setAttributes({
-      'PRODUCT_NAME': cheerio.productName,
-      'AVAILABLE_IN_STORE': cheerio.productAvailabilityToStore,
-      'AVAILABLE_TO_SHIP': cheerio.productAvailabilityDelivery,
-    });
-  };
-
-  sendNowAvailableForProducts(newlyAvailableProducts);
 }
 
 class CheerioAccessor {
@@ -119,43 +123,33 @@ class ProductAccessor {
     this.range = range;
     this.sheetRowNumber = sheetRowNumber;
 
-    this.name = this.productNameCell.getValue();
+    this.name = this.attribute(COLUMNS.PRODUCT_NAME).getValue();
     this.url = range.getCell(sheetRowNumber, COLUMNS.URL).getValue();
   }
 
-  get productNameCell() {
-    return this.range.getCell(this.sheetRowNumber, COLUMNS.PRODUCT_NAME);
+  attribute(cellName) {
+    return this.range.getCell(this.sheetRowNumber, cellName);
   }
-  get inStoreAvailableCell() {
-    return this.range.getCell(this.sheetRowNumber, COLUMNS.AVAILABLE_IN_STORE);
-  }
-  get deliveryAvailableCell() {
-    return this.range.getCell(this.sheetRowNumber, COLUMNS.AVAILABLE_TO_SHIP);
-  }
-
-  get productName() {
-    return this.productNameCell.getValue();
-  }
-  isAvailableInStore() {
-    return this.inStoreAvailableCell.getValue() === 'available';
-  }
-  isAvailableForDelivery() {
-    return this.deliveryAvailableCell.getValue() === 'available';
-  }
-
   setAttribute(attribute, value) {
-    if (attribute == 'PRODUCT_NAME') {
-      this.productNameCell.setValue(value)
-    }
-    if (attribute == 'AVAILABLE_IN_STORE') {
-      this.inStoreAvailableCell.setValue(value)
-    }
-    if (attribute == 'AVAILABLE_TO_SHIP') {
-      this.deliveryAvailableCell.setValue(value)
-    }
+    this.attribute(attribute).setValue(value)
   }
   setAttributes(setterObj) {
     Object.entries(setterObj).forEach(([key, value]) => this.setAttribute(key, value));
   }
+  markLinkInvalid() {
+    this.attribute(COLUMNS.VALID_URL).setValue('false');
+  }
+
+  isAvailableInStore() {
+    return this.attribute(COLUMNS.AVAILABLE_IN_STORE).getValue() === 'available';
+  }
+  isAvailableForDelivery() {
+    return this.attribute(COLUMNS.AVAILABLE_FOR_DELIVERY).getValue() === 'available';
+  }
+  isLinkValid() {
+    return this.attribute(COLUMNS.VALID_URL).getValue() !== 'false';
+  }
+
+  
 }
 
