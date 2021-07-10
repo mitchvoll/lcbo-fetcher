@@ -1,6 +1,9 @@
 # lcbo-fetcher
 Hacky google sheet script for fetching some bourbon
 
+### Trigger
+Script is attached to a google sheet with a time-based trigger of 30m
+
 ### Cookies
 Script needs to be loaded with the following cookies. This can be found by navigating to an lcbo page and setting your store location:
 
